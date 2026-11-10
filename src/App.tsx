@@ -59,16 +59,58 @@ export default function App() {
  const [taskFeedback,setTaskFeedback] = useState('');
  const [chosenLesson,setChosenLesson] = useState<typeof lessons[number] | null>(null);
  const [sandboxOutput,setSandboxOutput] = useState('Your code output will appear here.');
+ const [authUser,setAuthUser] = useState<{id:string;email?:string}|null>(null);
+ const [authEmail,setAuthEmail] = useState('');
+ const [authPassword,setAuthPassword] = useState('');
+ const [authMode,setAuthMode] = useState<'signin'|'signup'>('signin');
+ const [authBusy,setAuthBusy] = useState(false);
  useEffect(()=>{localStorage.setItem('kq-theme',dark?'dark':'light');document.documentElement.dataset.theme=dark?'dark':'light';},[dark]);
  useEffect(()=>{localStorage.setItem('kq-points',String(points));},[points]);
  useEffect(()=>{localStorage.setItem('kq-completed',JSON.stringify(completed));},[completed]);
  useEffect(()=>{localStorage.setItem('kq-name',name);},[name]);
+ useEffect(()=>{
+  if(!supabase) return;
+  let alive=true;
+  supabase.auth.getSession().then(({data})=>{if(alive){const u=data.session?.user;setAuthUser(u?{id:u.id,email:u.email}:null);}});
+  const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{const u=session?.user;setAuthUser(u?{id:u.id,email:u.email}:null);});
+  return ()=>{alive=false;subscription.unsubscribe();};
+ },[]);
+ useEffect(()=>{
+  if(!supabase||!authUser) return;
+  supabase.from('profiles').upsert({id:authUser.id,display_name:name},{onConflict:'id'}).then(({error})=>{
+   if(error) setNotice('Signed in, but profile sync needs attention. Check that supabase/schema.sql has been applied.');
+  });
+ },[authUser?.id]);
  const filteredSubjects=useMemo(()=>subjects.filter(s=>(s.name+' '+s.sub).toLowerCase().includes(search.toLowerCase())),[search]);
  const navGroups=[{title:'LEARN',items:[{name:'Home',icon:Compass},{name:'My Learning',icon:BookOpen},{name:'Subjects',icon:GraduationCap}]},{title:'PLAY & CREATE',items:[{name:'Fun Games',icon:Gamepad2},{name:'Game Development',icon:Code2},{name:'Quizzes',icon:Zap}]},{title:'YOUR SPACE',items:[{name:'Leaderboard',icon:Trophy},{name:'My Progress',icon:Sparkles},{name:'Settings',icon:Settings2}]}];
  const go=(page:string)=>{setActive(page);setActiveGame(null);setMobileNav(false);setNotice('');};
  const complete=(id:string,award=10)=>{if(!completed.includes(id)){setCompleted(old=>[...old,id]);setPoints(p=>p+award);} };
  const openGame=(g:Game)=>{setActiveGame(g);setGameScore(0);setGameTurns(0);setActive('Fun Games');setNotice('');};
  const scoreGame=(n=10)=>{setGameScore(s=>s+n);setGameTurns(t=>t+1);};
+ const handleAuth=async(e:React.FormEvent<HTMLFormElement>)=>{
+  e.preventDefault();
+  if(!supabase){setNotice('Add the Knowledge Quest Supabase URL and publishable key to enable login.');return;}
+  setAuthBusy(true);setNotice('');
+  try{
+   if(authMode==='signup'){
+    const {data,error}=await supabase.auth.signUp({email:authEmail.trim(),password:authPassword,options:{data:{display_name:name}}});
+    if(error) throw error;
+    if(data.session){setNotice('Account created and signed in. Welcome to Knowledge Quest!');}
+    else{setNotice('Account created. Check your email to confirm your address, then sign in.');setAuthMode('signin');}
+   }else{
+    const {error}=await supabase.auth.signInWithPassword({email:authEmail.trim(),password:authPassword});
+    if(error) throw error;
+    setNotice('You are signed in. Your cloud profile is ready.');
+   }
+   setAuthPassword('');
+  }catch(error){setNotice(error instanceof Error?error.message:'Unable to complete sign-in. Please try again.');}
+  finally{setAuthBusy(false);}
+ };
+ const handleSignOut=async()=>{
+  if(!supabase)return;
+  const {error}=await supabase.auth.signOut();
+  setNotice(error?error.message:'Signed out. This device keeps its local demo progress.');
+ };
  const finishGame=async()=>{const final=gameScore;setPoints(p=>p+final);setNotice(`Mission complete! You earned ${final} stars.`);if(supabase){const {data}=await supabase.auth.getUser();if(data.user && activeGame){await supabase.from('game_sessions').insert({user_id:data.user.id,game_id:activeGame.id,score:final,duration_seconds:0});await supabase.from('student_scores').upsert({user_id:data.user.id,activity_type:'game',activity_id:activeGame.id,points:final,best_score:final},{onConflict:'user_id,activity_type,activity_id'});}}};
  const submitAnswer=(s:typeof subjects[number])=>{if(answer.trim().toLowerCase().replace(/\s/g,'')===s.answer.toLowerCase().replace(/\s/g,'')){setTaskFeedback('Brilliant! That’s correct. +10 stars ✨');complete('quiz-'+s.name,10);}else setTaskFeedback('Good try! Re-read the mini lesson and try once more.');};
  const runSnippet=(lesson:typeof codingLessons[number])=>{const nums=lesson.code.match(/\+\s*(\d+)/g);const increment=nums?.[0]?.match(/\d+/)?.[0];setSandboxOutput(lesson.title+': example ready.\nTry the task below, then edit the code in your local editor to experiment safely.'+(increment?'\nDetected increment: '+increment:''));};
@@ -98,7 +140,7 @@ export default function App() {
    {active==='Quizzes'&&!activeGame&&<><PageIntro kicker="QUICK THINKING" title="Ready for a brain boost?" text="Choose a topic, answer a tiny question, and earn stars for each correct answer."/><div className="quiz-grid">{subjects.map(s=><button className="quiz-card" key={s.name} onClick={()=>{setSelectedSubject(s.name);go('Subjects')}}><span className={'subject-icon '+s.color}><s.icon size={20}/></span><strong>{s.name} quiz</strong><p>{s.task}</p><span className="text-link">Take challenge <ChevronRight size={14}/></span></button>)}</div></>}
    {active==='Leaderboard'&&!activeGame&&<><PageIntro kicker="CELEBRATE PROGRESS" title="The star seekers." text="Your personal score is saved on this device. Connect Supabase to enable shared student profiles and a global leaderboard."/><div className="leaderboard-card"><div className="leader-head"><Trophy size={22}/><div><h2>Explorer leaderboard</h2><p>Local demo view · your device only</p></div></div><div className="leader-row"><span className="rank">1</span><span className="leader-avatar">🧑‍🚀</span><strong>{name}</strong><span className="leader-points">{points} ⭐</span></div><div className="info-note"><ShieldCheck size={18}/><span>To show other students' scores, configure Supabase Auth and run the included schema. Never expose a Supabase service-role key in the browser.</span></div></div></>}
    {active==='My Progress'&&!activeGame&&<><PageIntro kicker="LOOK HOW FAR YOU'VE COME" title="Your progress, at a glance." text="Learning is not a race. Notice what you have practiced and pick your next small goal."/><div className="stats-grid progress-stats"><Stat icon={<Zap size={18}/>}label="STARS EARNED" value={String(points)} note="One step at a time" color="gold"/><Stat icon={<Check size={18}/>}label="COMPLETED" value={String(completed.length)} note="Lessons and challenges" color="lime"/><Stat icon={<Trophy size={18}/>}label="CURRENT LEVEL" value={String(Math.floor(points/100)+1)} note="Earn stars to level up" color="violet"/></div><div className="progress-track-wrap"><div className="progress-label"><strong>Next level</strong><span>{points%100}/100 stars</span></div><div className="progress-track"><i style={{width:(points%100)+'%'}}/></div></div><h2 className="subsection-title">Recently completed</h2>{completed.length?<div className="learning-list">{completed.map(c=><div className="learning-row" key={c}><span className="completed-check"><Check size={16}/></span><div><strong>{c}</strong><small>Added to your learning journey</small></div><span className="completed-label">Done</span></div>)}</div>:<div className="empty-state">Your first star is waiting. Complete a lesson or challenge to get started! ✨</div>}</>}
-   {active==='Settings'&&!activeGame&&<><PageIntro kicker="MAKE IT YOUR SPACE" title="Settings & preferences." text="Set your explorer name and personalize your learning experience."/><div className="settings-card"><h2>Explorer profile</h2><label className="field-label">Display name</label><input className="settings-input" value={draftName} onChange={e=>setDraftName(e.target.value)} maxLength={40}/><button className="btn-primary" onClick={()=>{setName(draftName.trim()||'Young Explorer');setNotice('Profile updated on this device.')}}>Save profile <Check size={16}/></button>{notice&&<p className="feedback">{notice}</p>}<div className="settings-divider"/><h3>Appearance</h3><p>Choose the look that feels right for you.</p><div className="theme-options"><button className={!dark?'theme-option selected':'theme-option'} onClick={()=>setDark(false)}><Sun size={20}/> Light mode {!dark&&<Check size={15}/>}</button><button className={dark?'theme-option selected':'theme-option'} onClick={()=>setDark(true)}><Moon size={20}/> Dark mode {dark&&<Check size={15}/>}</button></div><div className="settings-divider"/><h3>Cloud progress</h3><p>{supabase?'Supabase configuration detected. Sign-in is needed to sync personal scores.':'Local mode is active. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your Netlify environment to enable cloud features.'}</p></div></>}
+   {active==='Settings'&&!activeGame&&<><PageIntro kicker="MAKE IT YOUR SPACE" title="Settings & preferences." text="Set your explorer name and personalize your learning experience."/><div className="settings-card"><h2>Explorer profile</h2><label className="field-label">Display name</label><input className="settings-input" value={draftName} onChange={e=>setDraftName(e.target.value)} maxLength={40}/><button className="btn-primary" onClick={()=>{setName(draftName.trim()||'Young Explorer');setNotice('Profile updated on this device.')}}>Save profile <Check size={16}/></button>{notice&&<p className="feedback">{notice}</p>}<div className="settings-divider"/><h3>Appearance</h3><p>Choose the look that feels right for you.</p><div className="theme-options"><button className={!dark?'theme-option selected':'theme-option'} onClick={()=>setDark(false)}><Sun size={20}/> Light mode {!dark&&<Check size={15}/>}</button><button className={dark?'theme-option selected':'theme-option'} onClick={()=>setDark(true)}><Moon size={20}/> Dark mode {dark&&<Check size={15}/>}</button></div><div className="settings-divider"/><h3>Supabase account</h3><p>{!supabase?'Login is not configured yet. Add your separate Knowledge Quest Supabase project URL and publishable key in the app environment settings.':authUser?'Signed in as '+(authUser.email||'your account')+'. Cloud profile sync is enabled.':'Create a student account or sign in to sync your profile.'}</p>{supabase&&!authUser&&<><div className="theme-options"><button type="button" className={authMode==='signin'?'theme-option selected':'theme-option'} onClick={()=>setAuthMode('signin')}>Sign in</button><button type="button" className={authMode==='signup'?'theme-option selected':'theme-option'} onClick={()=>setAuthMode('signup')}>Create account</button></div><form onSubmit={handleAuth}><label className="field-label">Email address</label><input className="settings-input" type="email" autoComplete="email" required value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="student@example.com"/><label className="field-label">Password (minimum 6 characters)</label><input className="settings-input" type="password" autoComplete={authMode==='signup'?'new-password':'current-password'} minLength={6} required value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="Enter password"/><button className="btn-primary" type="submit" disabled={authBusy}>{authBusy?'Please wait…':authMode==='signup'?'Create student account':'Sign in'} <ChevronRight size={15}/></button></form></>}{supabase&&authUser&&<button className="btn-secondary" onClick={handleSignOut}>Sign out</button>}{notice&&<p className="feedback" role="status">{notice}</p>}<div className="settings-divider"/><h3>Cloud progress</h3><p>{supabase?'Cloud account connection is available. Only the signed-in learner can access their own profile, sessions, and scores.':'Local mode is active. Configure VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Netlify to enable account login.'}</p></div></>}
    <footer className="page-footer"><span>✦</span> Keep asking questions. Keep discovering. <span>✦</span><small>Knowledge Quest · Made for curious minds</small></footer>
    </div>
   </main>
