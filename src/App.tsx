@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Atom, BookOpen, BrainCircuit, Calculator, Check, ChevronRight, Code2, Compass, FlaskConical, Gamepad2, GraduationCap, Globe2, Lightbulb, Menu, Moon, Rocket, Search, Settings2, ShieldCheck, Sparkles, Sun, Trophy, Volume2, Zap } from 'lucide-react';
 
@@ -38,7 +38,7 @@ const lessons = [
 ];
 const lessonsBySubject = (s:string) => lessons.filter(l=>l.subject===s);
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabaseKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY) as string | undefined;
 const supabase: SupabaseClient | null = supabaseUrl && supabaseKey ? createClient(supabaseUrl,supabaseKey) : null;
 
 export default function App() {
@@ -87,7 +87,7 @@ export default function App() {
  const complete=(id:string,award=10)=>{if(!completed.includes(id)){setCompleted(old=>[...old,id]);setPoints(p=>p+award);} };
  const openGame=(g:Game)=>{setActiveGame(g);setGameScore(0);setGameTurns(0);setActive('Fun Games');setNotice('');};
  const scoreGame=(n=10)=>{setGameScore(s=>s+n);setGameTurns(t=>t+1);};
- const handleAuth=async(e:React.FormEvent<HTMLFormElement>)=>{
+ const handleAuth=async(e:FormEvent<HTMLFormElement>)=>{
   e.preventDefault();
   if(!supabase){setNotice('Add the Knowledge Quest Supabase URL and publishable key to enable login.');return;}
   setAuthBusy(true);setNotice('');
