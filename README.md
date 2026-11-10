@@ -24,15 +24,26 @@ npm run dev
 
 The app runs in local demo mode without Supabase configuration. Local progress is stored in browser localStorage and is specific to the current browser/device.
 
-## Supabase setup (optional)
+## Supabase setup and student login
 
-1. Create a Supabase project.
-2. Open SQL Editor and run `supabase/schema.sql`.
-3. Configure authentication providers in Supabase.
-4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (or the publishable key) in your local `.env.local` and in Netlify site environment variables.
-5. Redeploy the site.
+Use a **separate Supabase project for Knowledge Quest**. Do not reuse the Supabase project or keys from a trading or other application.
 
-**Security notes:** Only put the Supabase URL and publishable/anon key in browser environment variables. Never expose a service-role key. Review authentication, parental consent, data retention, and privacy requirements before collecting children's data. The current UI stores progress locally by default; cloud syncing requires authenticated users and additional product wiring before it is production-ready. Public leaderboards should be reviewed carefully for child privacy.
+1. In the Supabase dashboard, create a project named `Knowledge Quest`.
+2. Open **SQL Editor → New query**, paste `supabase/schema.sql`, and run it once.
+3. In **Authentication → Providers → Email**, enable Email sign-in. Decide whether email confirmation is required.
+4. In **Authentication → URL Configuration**, set the Site URL to your local development URL while testing (for example `http://localhost:5173`) and add your deployed Netlify URL to Redirect URLs when you deploy.
+5. Copy the project's **Project URL** and **Publishable key** from **Project Settings → API**.
+6. For local development, copy `.env.example` to `.env.local` and set:
+   - `VITE_SUPABASE_URL` = the Knowledge Quest Project URL
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` = the Knowledge Quest publishable key
+7. In Netlify, open **Site configuration → Environment variables** and add the same two variables. Trigger a new deploy after the variables are saved.
+8. Open Knowledge Quest → **Settings → Supabase account**. Choose **Create account** or **Sign in**.
+
+The Settings screen now includes email/password sign-up, sign-in, and sign-out. When a user signs in, the app creates or updates their own profile row. If email confirmation is enabled, the learner must confirm the email before signing in.
+
+**Security and child privacy:** Never put a Supabase secret/service-role key in frontend variables or GitHub. Only the publishable key is intended for browser use. The schema restricts student profile, session, and score access to the signed-in student. The current leaderboard is intentionally not a cross-student public leaderboard; implement a privacy-reviewed, server-controlled aggregate before showing children's names or scores to other users. Obtain appropriate parental consent and review applicable child privacy obligations before collecting real student data.
+
+The app continues to work in local demo mode if Supabase environment variables are not configured. Local browser progress is not automatically migrated into a cloud account.
 
 ## Build
 

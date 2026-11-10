@@ -55,8 +55,8 @@ alter table public.games enable row level security;
 alter table public.game_sessions enable row level security;
 alter table public.student_scores enable row level security;
 
-create policy "Profiles are readable by authenticated learners" on public.profiles
- for select to authenticated using (true);
+create policy "Learners read own profile" on public.profiles
+ for select to authenticated using ((select auth.uid()) = id);
 create policy "Learners create own profile" on public.profiles
  for insert to authenticated with check (auth.uid() = id);
 create policy "Learners update own profile" on public.profiles
